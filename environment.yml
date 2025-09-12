@@ -1,0 +1,26 @@
+name: tool_transfer_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8
+  - pytorch
+  - torchaudio
+  - torchvision
+  - jupyter
+  - scikit-learn
+  - matplotlib
+  - librosa
+  - opencv=4.6.0
+  - pandas
+  - seaborn
+  - liblapack
+  - scikit-image
+  - conda-forge::mock
+  - conda-forge::tensorboard
+  - pytz
+  - fastdtw
+  - h5py
+  - numpy
+  - moviepy
+  - tqdm
