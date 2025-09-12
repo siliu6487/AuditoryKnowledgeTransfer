@@ -14,8 +14,6 @@ echo "Running on node: $(hostname)"
 echo "Script location: ${SCRIPT_DIR}"
 echo "Started at: $(date)"
 
-mkdir -p "${SCRIPT_DIR}/slurm_logs"
-
 module load miniforge/24.11.2-py312
 
 source activate tool_transfer_env
