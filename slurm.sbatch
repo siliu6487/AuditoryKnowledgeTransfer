@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #SBATCH --job-name=picc-rl-array
-#SBATCH --output=logs/picc-rl_%A_%a.log
-#SBATCH --error=logs/picc-rl_%A_%a.log
+#SBATCH --output=slurm_logs/picc-rl_%A_%a.log
+#SBATCH --error=slurm_logs/picc-rl_%A_%a.log
 #SBATCH --time=00:30:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
@@ -28,7 +28,7 @@ echo "Using configuration file: ${CONFIG_FILE}"
 
 python3 main.py --config "${CONFIG_FILE}"
 
-echo "Finished at: $(date)"  # $ tail -f configs/${SLURM_ARRAY_TASK_ID}.json
+echo "Finished at: $(date)"  # $ tail -f logs/picc-rl_15662689_1.log
 # sbatch slurm.sbatch
 # watch squeue -u $(whoami)  (or without watch)  # check job conditions
 
