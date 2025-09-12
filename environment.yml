@@ -13,8 +13,5 @@ dependencies:
   - opencv=4.6.0
   - pandas
   - seaborn
-  - liblapack
   - scikit-image
-  - pytz
-  - fastdtw
   - numpy
