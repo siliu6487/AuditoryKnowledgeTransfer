@@ -242,7 +242,7 @@ def _viz_embeddings(embeds: np.ndarray, labels: np.ndarray, tool_labels: list, o
     if save_fig:
         plt.savefig(save_path + save_name + '.jpeg', bbox_inches='tight')
     if show_fig:
-        plt.show()
+        plt.show(block=False)
     plt.close()
 
 
@@ -371,7 +371,7 @@ def viz_test_objects_embedding(
         save_name = f"classifier_decision_boundary_{transfer_class.encoder_loss_fuc}"
         plt.savefig(save_path + save_name + '.jpeg', bbox_inches='tight')
     if show_fig:
-        plt.show()
+        plt.show(block=False)
     plt.close()
 
 
@@ -433,7 +433,7 @@ def plot_learning_progression(record, type, TL_margin, loss_func, sincere_temp, 
         if save_fig:
             plt.savefig(save_path + save_name + '.jpeg', bbox_inches='tight')
         if show_fig:
-            plt.show()
+            plt.show(block=False)
         plt.close()
     elif type == 'classifier':
         xaxis = np.arange(1, record.shape[1] + 1)
@@ -449,7 +449,7 @@ def plot_learning_progression(record, type, TL_margin, loss_func, sincere_temp, 
         if save_fig:
             plt.savefig(save_path + save_name + '.jpeg', bbox_inches='tight')
         if show_fig:
-            plt.show()
+            plt.show(block=False)
         plt.close()
     else:
         logging.warning(f'invalid model type: {type}, plot not available.')
@@ -465,7 +465,7 @@ def plot_data_histogram(data_flat, bins=20):
     plt.grid(True)
 
     # Show the plot
-    plt.show()
+    plt.show(block=False)
 
 
 def viz_encoder_input_data(transfer_obj, data_dim, all_params, context_dict):

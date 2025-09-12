@@ -1,0 +1,11 @@
+{
+  "plot_learning": false,
+  "viz_dataset":false,
+  "viz_share_space": false,
+  "viz_decision_boundary": false,
+  "save_fig": false,
+  "save_temp_model": false,
+
+  "source_tool_list": ["plastic-spoon", "wooden-fork", "metal-whisk", "wooden-chopstick", "plastic-knife"],
+  "target_tool_list": ["metal-scissor"]
+}
