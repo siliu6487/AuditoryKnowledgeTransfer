@@ -454,50 +454,6 @@ class ToolKnowledgeTransfer:
 
         return same_object_list
 
-    def _TL_loss_fn(self, source_data, target_data, Encoder, alpha, encoder_output_dim,
-                    pairs_per_batch_per_object) -> torch.Tensor:
-        Encoder.l2_norm = self.enc_l2_norm
-        encoded_source = Encoder(source_data)
-        encoded_target = Encoder(target_data)  # TODO: fix problem for empty target
-        same_object_list = self._get_same_object_list(encoded_source, encoded_target, encoder_output_dim)
-
-        trail_tot_num_list = np.array([same_object_list[i].shape[0] for i in range(len(same_object_list))])
-        tot_object_num = encoded_source.shape[2]
-
-        A_mat = torch.zeros(pairs_per_batch_per_object * tot_object_num, encoder_output_dim, device=configs.device)
-        P_mat = torch.zeros(pairs_per_batch_per_object * tot_object_num, encoder_output_dim, device=configs.device)
-        N_mat = torch.zeros(pairs_per_batch_per_object * tot_object_num, encoder_output_dim, device=configs.device)
-
-        for object_index in range(tot_object_num):
-            object_list = same_object_list[object_index]
-
-            # Sample anchor and positive
-            A_index = np.random.choice(trail_tot_num_list[object_index], size=pairs_per_batch_per_object)
-            P_index = np.random.choice(trail_tot_num_list[object_index], size=pairs_per_batch_per_object)
-            start = object_index * pairs_per_batch_per_object
-            end = (object_index + 1) * pairs_per_batch_per_object
-            A_mat[start: end] = object_list[A_index, :]
-            P_mat[start: end] = object_list[P_index, :]
-
-            # Sample negative
-            N_object_list = np.random.choice(len(trail_tot_num_list), size=pairs_per_batch_per_object)
-            N_list = torch.zeros(pairs_per_batch_per_object, encoder_output_dim,
-                                 dtype=configs.data_dtype).to(configs.device)
-            for i in range(len(N_object_list)):
-                N_object_index = N_object_list[i]
-                N_trail_index = np.random.choice(trail_tot_num_list[N_object_index])
-                N_list[i] = same_object_list[N_object_index][N_trail_index]
-                N_mat[start: end] = N_list
-
-        dPA = torch.norm(A_mat - P_mat, dim=1)
-        dNA = torch.norm(A_mat - N_mat, dim=1)
-
-        d = dPA - dNA + alpha
-        d[d < 0] = 0
-
-        loss = torch.mean(d)
-        return loss
-
     def get_data(self, behavior_list, tool_list, modality_list, object_list, trail_list,
                  get_labels=False, use_tool_emb=False) -> dict:
         """

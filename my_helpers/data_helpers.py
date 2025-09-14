@@ -2,9 +2,12 @@ import copy
 import inspect
 import logging
 import math
-import random
 import types
-from typing import Tuple, List, Union, Dict
+from typing import Tuple, List, Dict
+
+import itertools
+import random
+from collections import Counter
 
 import numpy as np
 import torch
@@ -20,6 +23,38 @@ ALL_TOOL_LIST = sorted(['plastic-spoon', 'wooden-fork', 'metal-whisk',
                         "wooden-chopstick", "plastic-knife", 'metal-scissor'])
 TOOL_GROUPS = ['source', 'target']
 OBJ_GROUPS = ['old', 'new']
+
+
+def generate_bibd(all_objs, k=5, n_blocks=15, seed=42):
+    """
+    Generate an approximate BIBD for selecting subsets of objects.
+    Ensures diversity of subsets.
+    """
+    random.seed(seed)
+
+    # All possible k-subsets
+    all_combos = list(itertools.combinations(all_objs, k))
+
+    blocks = []
+    counts = Counter()
+
+    for _ in range(n_blocks):
+        # score subsets by how well they balance object frequency
+        scored = []
+        for subset in all_combos:
+            if subset in blocks:  # avoid duplicates
+                continue
+            score = sum(counts[obj] for obj in subset)
+            scored.append([score, random.random(), subset])  # add randomness
+
+        # choose the best (lowest score), random breaks ties
+        scored.sort(key=lambda x: [x[0], x[1]])
+        chosen = scored[0][2]
+
+        blocks.append(list(chosen))
+        counts.update(chosen)
+
+    return blocks, counts
 
 
 def sanity_check_data_labels(data_dict: dict):
@@ -348,7 +383,7 @@ def fill_missing_hyper_params(hyparams: dict, param_model="classifier"):
 def fill_missing_context(context_dict):
     if context_dict is None:
         context_dict = {}
-    context_names = ['behavior_list', 'modality_list', 'trail_list',
+    context_names = ['modality_list', 'trail_list',
                      'old_object_list', 'new_object_list', 'all_object_list',
                      'source_tool_list', 'target_tool_list', 'source_beh_list', 'target_beh_list']
     for name in context_names:
@@ -376,6 +411,7 @@ def filter_keys_by_func(param_dict, function):
     explicit_args = inspect.signature(function).parameters.keys()
     return copy.deepcopy({k: v for k, v in param_dict.items() if k in explicit_args})
 
+
 def set_torch_seed(seed=configs.rand_seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -392,3 +428,4 @@ def get_config_params():
         if not name.startswith("__") and not callable(value)
            and not isinstance(value, types.ModuleType)
     }
+
