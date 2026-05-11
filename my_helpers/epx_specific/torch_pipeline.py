@@ -9,6 +9,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 
 import configs
 from my_helpers.datasets import AudioDataset, AudioTextDataset
+from my_helpers.models import LinearProbLayer
 
 
 def has_key_X(d):
@@ -32,7 +33,6 @@ class TransferPipeline:
         self.context_dict = context_dict
 
         assert set(self.context_dict['shared_object_list']).isdisjoint(self.context_dict['test_object_list'])
-        self.full_obj_list = sorted(self.context_dict['shared_object_list'] + self.context_dict['test_object_list'])
         self.full_beh_list = sorted(list(set(self.context_dict['source_beh_list']
                                              + self.context_dict['target_beh_list'])))
         self.full_tool_list = sorted(list(set(self.context_dict['source_tool_list']
@@ -44,7 +44,8 @@ class TransferPipeline:
         # ---------- required data ----------
         self.audio_data_name = audio_data_name  # saved interaction audio embeddings from preprocessing or pre-trained model
         self.audio_data_dict = self.get_data_dict(self.audio_data_name)
-        self.audio_data_dict = self.get_unimodal_dict(self.audio_data_dict, modality="audio")
+        self.audio_data_dict = self.get_unimodal_dict(self.audio_data_dict, modality="audio",
+                                                      full_obj_dict=self.get_full_obj_list())
 
         # # ---------- CLAP transfer ----------
         self.text_data_dict = None if text_data_name is None else self.get_data_dict(text_data_name)
@@ -56,6 +57,9 @@ class TransferPipeline:
             self.tool_data_dict = self.get_data_dict(self.tool_data_name)
         #
         # self.other_modality_dict = other_modality_dict
+
+    def get_full_obj_list(self):
+        return sorted(list(set(self.context_dict['shared_object_list'] + self.context_dict['test_object_list'])))
 
     def get_data_dict(self, data_name):
         data_folder = os.path.join(self.data_path, data_name)
@@ -74,12 +78,12 @@ class TransferPipeline:
             raise Exception(f"data_name not eligible: {data_name}")
         return data_dict
 
-    def get_unimodal_dict(self, orig_dict, modality):
+    def get_unimodal_dict(self, orig_dict, modality, full_obj_dict):
         if has_key_X(orig_dict):
             new_dict = {
                 beh: {
                     tool: {
-                        obj: [] for obj in self.full_obj_list}
+                        obj: [] for obj in full_obj_dict}
                     for tool in self.full_tool_list
                 }
                 for beh in self.full_beh_list
@@ -110,3 +114,99 @@ class TransferPipeline:
             obj_label_map=obj_label_map,
             data_dict=self.audio_data_dict
         )
+
+    def train_linear_probe_clf(self, train_dataloader, val_dataloader, hyparams, obj_list, encoder):
+        assert encoder is not None
+
+        clf = LinearProbLayer(in_dim=hyparams['encoder_output_dim'], num_classes=len(obj_list)).to(self.device)
+        optimizer = torch.optim.AdamW(clf.parameters(), lr=hyparams['lr_classifier'])
+        loss_func = torch.nn.CrossEntropyLoss()
+        encoder.eval()
+
+        all_losses = []
+        all_accuracies = []
+        all_losses_val = []
+        all_accuracies_val = []
+        for epoch in range(hyparams['epoch_classifier']):
+            total_correct = 0
+            total_truth = 0
+            loss_value = 0
+            for batch in train_dataloader:
+                audio_data, obj_id = batch['audio_data'].to(self.device), batch['obj_id'].to(self.device)
+                with torch.no_grad():
+                    audio_enc = encoder(audio_data)
+
+                pred = clf(audio_enc).view(-1, len(obj_list))  # (num_data, num_class)
+                truth = obj_id.view(-1).long()
+                loss = loss_func(pred, truth)
+                loss_value += loss.item()
+
+                truth = truth.detach().cpu().numpy()
+                pred_label = torch.argmax(pred, dim=-1).detach().cpu().numpy()
+                correct_num = np.sum(pred_label == truth)
+                total_correct += correct_num
+                total_truth += len(truth)
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+            all_losses.append(loss_value / len(train_dataloader))
+            all_accuracies.append(total_correct / total_truth)
+
+            if val_dataloader is not None:
+                total_correct_val = 0
+                total_truth_val = 0
+                loss_value_val = 0
+                for batch in val_dataloader:
+                    audio_data, obj_id = batch['audio_data'].to(self.device), batch['obj_id'].to(self.device)
+                    with torch.no_grad():
+                        audio_enc = encoder(audio_data)
+
+                    pred = clf(audio_enc).view(-1, len(obj_list))  # (num_data, num_class)
+                    truth = obj_id.view(-1).long()
+                    loss = loss_func(pred, truth)
+                    loss_value_val += loss.item()
+
+                    truth = truth.detach().cpu().numpy()
+                    pred_label = torch.argmax(pred, dim=-1).detach().cpu().numpy()
+                    total_correct_val += np.sum(pred_label == truth)
+                    total_truth_val += len(truth)
+
+                all_losses_val.append(loss_value_val / len(val_dataloader))
+                all_accuracies_val.append(total_correct_val / total_truth_val)
+
+        return clf, {
+            "all_losses_train": all_losses,
+            "all_accuracies_train": all_accuracies,
+            "all_losses_val": all_losses_val,
+            "all_accuracies_val": all_accuracies_val
+        }
+
+    def test_linera_probe_clf(self, dataloader, encoder, clf, obj_list):
+        total_correct_val = 0
+        total_truth_val = 0
+        all_truth = []
+        all_pred = []
+        for batch in dataloader:
+            audio_data, obj_id = batch['audio_data'].to(self.device), batch['obj_id'].to(self.device)
+            with torch.no_grad():
+                audio_enc = encoder(audio_data)
+
+            pred = clf(audio_enc).view(-1, len(obj_list))  # (num_data, num_class)
+            truth = obj_id.view(-1).long()
+
+            truth = truth.detach().cpu().numpy()
+            pred_label = torch.argmax(pred, dim=-1).detach().cpu().numpy()
+            total_correct_val += np.sum(pred_label == truth)
+            total_truth_val += len(truth)
+            all_truth.append(truth)
+            all_pred.append(pred_label)
+
+        accuracy = total_correct_val / total_truth_val
+
+        return {
+            "accuracy": accuracy,
+            "all_truth": [int(p) for p in np.concatenate(all_truth).squeeze()],
+            "all_pred": [int(p) for p in np.concatenate(all_pred).squeeze()]
+        }

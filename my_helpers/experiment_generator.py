@@ -10,7 +10,11 @@ from my_helpers.exp_helpers import get_exp_config_dir
 def create_exp_config(experiment_name: str, source_type: str, data_name: str,
                       config_dir: str = "exp_configs",
                       limit_tool: None or list = None, limit_beh: None or list = None):
-
+    print("====================================")
+    print(f"experiment_name: {experiment_name}")
+    print(f"source_type: {source_type}")
+    print(f"limit_tool {limit_tool}")
+    print(f"limit_beh: {limit_beh}")
     config_dir = get_exp_config_dir(config_dir=config_dir, data_name=data_name, experiment_name=experiment_name,
                                     source_type=source_type, limit_tool=limit_tool, limit_beh=limit_beh,
                                     clean_dir=True)
@@ -37,19 +41,28 @@ def create_exp_config(experiment_name: str, source_type: str, data_name: str,
         exp_config["experiment_name"] = f"{experiment_name}_{task_id}of{total_task}"
 
         # same behavior for all cross-tool exp; same tool for all cross-beh exp
-        if source_type != "single":
-            tool_idx, beh_idx = (i % context_dicts['num_tool'], i // context_dicts['num_tool']) \
-                if context_dicts['iter_by_tool'] else (i // context_dicts['num_beh'], i % context_dicts['num_beh'])
-            print(f"tool_idx, beh_idx: {tool_idx, beh_idx}")
-            cd = {"source_tool_list": context_dicts['source_tools'][tool_idx],
-                  "target_tool_list": context_dicts['target_tools'][tool_idx],
-                  "source_beh_list": context_dicts['source_behs'][beh_idx],
-                  "target_beh_list": context_dicts['target_behs'][beh_idx]}
+        if source_type == "no_cross":
+            assert source_type == "all"
+            cd = {"source_tool_list": context_dicts['source_tools'],
+                  "target_tool_list": context_dicts['target_tools'],
+                  "source_beh_list": context_dicts['source_behs'],
+                  "target_beh_list": context_dicts['target_behs']}
+            print(f"no cross")
         else:
-            cd = {"source_tool_list": context_dicts['source_tools'][i],
-                  "target_tool_list": context_dicts['target_tools'][i],
-                  "source_beh_list": context_dicts['source_behs'][i],
-                  "target_beh_list": context_dicts['target_behs'][i]}
+            if source_type != "single":
+                tool_idx, beh_idx = (i % context_dicts['num_tool'], i // context_dicts['num_tool']) \
+                    if context_dicts['iter_by_tool'] else (i // context_dicts['num_beh'], i % context_dicts['num_beh'])
+                print(f"tool_idx, beh_idx: {tool_idx, beh_idx}")
+                cd = {"source_tool_list": context_dicts['source_tools'][tool_idx],
+                      "target_tool_list": context_dicts['target_tools'][tool_idx],
+                      "source_beh_list": context_dicts['source_behs'][beh_idx],
+                      "target_beh_list": context_dicts['target_behs'][beh_idx]}
+
+            else:
+                cd = {"source_tool_list": context_dicts['source_tools'][i],
+                      "target_tool_list": context_dicts['target_tools'][i],
+                      "source_beh_list": context_dicts['source_behs'][i],
+                      "target_beh_list": context_dicts['target_behs'][i]}
 
         print(cd)
         exp_config.update(cd)
@@ -64,11 +77,10 @@ def create_exp_config(experiment_name: str, source_type: str, data_name: str,
 
 def make_context_dict(experiment_name: str, source_type: str,
                       limit_tool: None or list, limit_beh: None or list):
-    assert experiment_name in ['cross_tool', 'cross_behavior'], \
+    assert experiment_name in ['cross_tool', 'cross_behavior', "no_cross"], \
         f"experiment_name not correct: {experiment_name}. eligible: ['cross_tool', 'cross_behavior', 'cross_tool_beh']"
-    assert source_type in ["rest", "latin_square_single", "single"], \
+    assert source_type in ["rest", "latin_square_single", "single", "all"], \
         f'source_type not correct: {source_type}. eligible: ["rest", "latin_square_single", "single"]'
-
     tools = copy.deepcopy(configs.ALL_TOOL_LIST)
     behs = copy.deepcopy(configs.ALL_BEH_LIST)
     if limit_tool:
@@ -120,6 +132,13 @@ def make_context_dict(experiment_name: str, source_type: str,
                 source_behs.append([p[0]])
                 target_behs.append([p[1]])
 
+    elif source_type == "all":
+        total_task = 1
+        source_tools = tools
+        target_tools = tools
+        source_behs = behs
+        target_behs = behs
+
     else:  # one-to-one
         if experiment_name == "cross_tool":
             source_behs, target_behs = copy.deepcopy(list_behs), copy.deepcopy(list_behs)
@@ -132,6 +151,18 @@ def make_context_dict(experiment_name: str, source_type: str,
                     target_tools.append([p[1]])
                     source_behs.append(beh)
                     target_behs.append(beh)
+        elif experiment_name == "cross_behavior":
+            source_tools, target_tools = copy.deepcopy(list_tools), list(list_tools)
+            total_task = num_beh * (num_beh - 1) * num_tool
+            pairs = list(itertools.permutations(behs, 2))
+            print(f"num pairs: {len(pairs)}")
+            for p in pairs:
+                for t in list_tools:
+                    source_behs.append([p[0]])
+                    target_behs.append([p[1]])
+                    source_tools.append(t)
+                    target_tools.append(t)
+
         else:
             raise Exception(f"exp not needed")
 

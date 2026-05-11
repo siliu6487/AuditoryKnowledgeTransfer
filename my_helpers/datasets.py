@@ -50,7 +50,8 @@ class AudioDataset(Dataset):
                     trials = data_dict[beh][tool][obj]
                     for i, trial in enumerate(trials):
                         self.samples.append((
-                            i, trial,  # audio embedding data
+                            i,
+                            trial,  # audio embedding data
                             self.obj2id[obj],
                             self.tool2id[tool],
                             self.beh2id[beh],
@@ -68,6 +69,15 @@ class AudioDataset(Dataset):
             "tool_id": torch.tensor(tool_id, dtype=torch.long),
             "beh_id": torch.tensor(beh_id, dtype=torch.long),
         }
+
+    def subset_by_trial_nums(self, trial_num_list):
+        subset_samples = [s for s in self.samples if s[0] in trial_num_list]
+        new_ds = AudioDataset.__new__(AudioDataset)  # bypass __init__
+        new_ds.samples = subset_samples
+        new_ds.tool2id = self.tool2id
+        new_ds.beh2id = self.beh2id
+        new_ds.obj2id = self.obj2id
+        return new_ds
 
 
 class AudioTextDataset(Dataset):
@@ -104,3 +114,5 @@ class AudioTextDataset(Dataset):
             "tool_id": torch.tensor(tool_id, dtype=torch.long),
             "beh_id": torch.tensor(beh_id, dtype=torch.long),
         }
+
+

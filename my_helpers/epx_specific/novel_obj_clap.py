@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, ConcatDataset
 
+from my_helpers.epx_specific.tune_clap import ClapPiplineAudio
 from my_helpers.models import GeneralEncoder
 from my_helpers.epx_specific.torch_pipeline import TransferPipeline
 
@@ -15,52 +16,37 @@ def clip_loss(sim_matrix):
     return (loss_i + loss_t) / 2
 
 
-class ClapPiplineAudio(TransferPipeline):
-    def __init__(self, context_dict: dict, audio_data_name: str, text_data_name: str,
-                 true_zero_shot: bool, novel_obj: bool):
+class ClapCrossObjPiplineAudio(ClapPiplineAudio):
+    def __init__(self, context_dict: dict, audio_data_name: str, text_data_name: str):
 
-        super().__init__(transfer_type="CLAP",
-                         context_dict=context_dict,
-                         modalities=['audio'],
+        super().__init__(context_dict=context_dict,
+                         novel_obj=True,
+                         true_zero_shot=True,
                          audio_data_name=audio_data_name,
                          text_data_name=text_data_name)
 
-        self.true_zero_shot = true_zero_shot  # TODO
-        self.novel_obj = novel_obj
-        if self.novel_obj:
-            assert self.true_zero_shot
+        self.transfer_type = "CLAP_crossObj"
 
         self.encoder = None
         self.clf = None
 
     def learn_encoder(self, hyparams, one_batch, full_obj_list) -> dict:
         # ---------- make data loader ----------------
-        if self.novel_obj:
-            shared_obj_list = self.context_dict['shared_object_list']
-            shared_obj_label_map = {o: i for i, o in enumerate(shared_obj_list)}
-            train_dataset = self.get_audio_text_dataset(
-                tools=self.context_dict['source_tool_list'],
-                behaviors=self.context_dict['source_beh_list'],
-                objects=shared_obj_list,
-                obj_label_map=shared_obj_label_map
-            )
-        else:
-            obj_label_map = {o: i for i, o in enumerate(full_obj_list)}
-            train_dataset = self.get_audio_text_dataset(
-                tools=self.context_dict['source_tool_list'],
-                behaviors=self.context_dict['source_beh_list'],
-                objects=full_obj_list,
-                obj_label_map=obj_label_map
-            )
-
-            if not self.true_zero_shot:  # shared objects
-                target_dataset = self.get_audio_text_dataset(
-                    tools=self.context_dict['target_tool_list'],
-                    behaviors=self.context_dict['target_beh_list'],
-                    objects=self.context_dict['shared_object_list'],
-                    obj_label_map=obj_label_map
-                )
-                train_dataset = ConcatDataset([train_dataset, target_dataset])
+        shared_obj_list = self.context_dict['shared_object_list']
+        shared_obj_label_map = {o: i for i, o in enumerate(shared_obj_list)}
+        source_dataset = self.get_audio_text_dataset(
+            tools=self.context_dict['source_tool_list'],
+            behaviors=self.context_dict['source_beh_list'],
+            objects=shared_obj_list,
+            obj_label_map=shared_obj_label_map
+        )
+        target_dataset = self.get_audio_text_dataset(
+            tools=self.context_dict['target_tool_list'],
+            behaviors=self.context_dict['target_beh_list'],
+            objects=shared_obj_list,
+            obj_label_map=shared_obj_label_map
+        )
+        train_dataset = ConcatDataset([source_dataset, target_dataset])
 
         print(f"encoder train size: {len(train_dataset)}")
 
@@ -115,7 +101,9 @@ class ClapPiplineAudio(TransferPipeline):
             "all_losses": all_losses
         }
 
-    def test_retrival(self, test_obj_list: list, use_enc: bool) -> dict:
+    def test_retrival(self, test_obj_list: list, use_enc: bool, no_overlap=True) -> dict:
+        if no_overlap:
+            assert not bool(set(self.context_dict['shared_object_list']) & set(test_obj_list))
 
         obj_label_map = {o: i for i, o in enumerate(test_obj_list)}
         target_tool_list = self.context_dict['target_tool_list']
@@ -184,51 +172,3 @@ class ClapPiplineAudio(TransferPipeline):
             "all_truth": all_truth,
             "all_pred": all_pred
         }
-
-    def train_classifier(self, hyparams: dict, one_batch: bool):
-        assert not self.novel_obj  # when obj has not been seen at all, can only do text retrival
-        obj_list = self.context_dict['test_object_list']
-        obj_label_map = {o: i for i, o in enumerate(obj_list)}
-        source_dataset = self.get_audio_dataset(
-            tools=self.context_dict['source_tool_list'],
-            behaviors=self.context_dict['source_beh_list'],
-            objects=obj_list,
-            obj_label_map=obj_label_map
-        )
-        print(f"clf train size: {len(source_dataset)}")
-        batch_size = len(source_dataset) if one_batch else hyparams['batch_size']
-
-        train_dataloader = DataLoader(
-            dataset=source_dataset,
-            batch_size=batch_size,
-            shuffle=hyparams['shuffle']
-        )
-
-        train_result = self.train_linear_probe_clf(train_dataloader=train_dataloader, val_dataloader=None,
-                                                   hyparams=hyparams, obj_list=obj_list, encoder=self.encoder)
-
-        return train_result
-
-    def test_classifier(self):
-        assert not self.novel_obj  # when obj has not been seen at all, can only do text retrival
-        assert self.encoder is not None and self.clf is not None, "need learned encoder and classifier"
-
-        # ---------- make data loader ----------------
-        test_obj_list = self.context_dict['test_object_list']
-        obj_label_map = {o: i for i, o in enumerate(test_obj_list)}
-        target_dataset = self.get_audio_dataset(
-            tools=self.context_dict['target_tool_list'],
-            behaviors=self.context_dict['target_beh_list'],
-            objects=test_obj_list,
-            obj_label_map=obj_label_map
-        )
-        print(f"clf test size: {len(target_dataset)}")
-        test_dataloader = DataLoader(
-            dataset=target_dataset,
-            batch_size=len(target_dataset),
-            shuffle=False
-        )
-
-        result = self.test_linera_probe_clf(dataloader=test_dataloader, obj_list=test_obj_list,
-                                            encoder=self.encoder, clf=self.clf)
-        return result

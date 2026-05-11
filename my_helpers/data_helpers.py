@@ -14,6 +14,7 @@ import torch
 
 import configs
 import model
+from my_helpers.epx_specific.torch_pipeline import TransferPipeline
 
 # for input data from data files, the labels were created in this order
 SORTED_DATA_OBJ_LIST = sorted(['empty', 'water', 'detergent', 'chia-seed', 'cane-sugar', 'salt',
@@ -25,7 +26,7 @@ TOOL_GROUPS = ['source', 'target']
 OBJ_GROUPS = ['old', 'new']
 
 
-def generate_bibd(all_objs, k=5, n_blocks=15, seed=42):
+def generate_bibd(all_objs, k=5, n_blocks=15, seed=42, forbidden_set=None):
     """
     Generate an approximate BIBD for selecting subsets of objects.
     Ensures diversity of subsets.
@@ -44,6 +45,10 @@ def generate_bibd(all_objs, k=5, n_blocks=15, seed=42):
         for subset in all_combos:
             if subset in blocks:  # avoid duplicates
                 continue
+            if forbidden_set is not None:
+                # skip subset if it contains >= 2 forbidden items
+                if sum(1 for x in subset if x in forbidden_set) >= 2:
+                    continue
             score = sum(counts[obj] for obj in subset)
             scored.append([score, random.random(), subset])  # add randomness
 
@@ -428,4 +433,53 @@ def get_config_params():
         if not name.startswith("__") and not callable(value)
            and not isinstance(value, types.ModuleType)
     }
+
+
+def make_dataset_by_context(context_dict, full_obj_list):
+    pipe = TransferPipeline(transfer_type="test", context_dict=context_dict,
+                            modalities=['audio'], audio_data_name='audio_20s_clap_emb_all.npz')
+    obj_label_map = {o: i for i, o in enumerate(full_obj_list)}
+    source_train_dataset = pipe.get_audio_dataset(
+        tools=pipe.context_dict['source_tool_list'],
+        behaviors=pipe.context_dict['source_beh_list'],
+        objects=full_obj_list,
+        obj_label_map=obj_label_map
+    )
+    target_train_dataset = pipe.get_audio_dataset(
+        tools=pipe.context_dict['target_tool_list'],
+        behaviors=pipe.context_dict['target_beh_list'],
+        objects=pipe.context_dict['shared_object_list'],
+        obj_label_map=obj_label_map
+    )
+    target_test_dataset = pipe.get_audio_dataset(
+        tools=pipe.context_dict['target_tool_list'],
+        behaviors=pipe.context_dict['target_beh_list'],
+        objects=pipe.context_dict['test_object_list'],
+        obj_label_map=obj_label_map
+    )
+    return source_train_dataset, target_train_dataset, target_test_dataset
+
+
+def combine_datasets_embeddings(datasets, encoder=None):
+    """Collect all embeddings and metadata for PCA."""
+    all_embeds, meta = [], []
+    for dataset_type, dataset in datasets.items():
+        for sample in dataset:
+            # Convert to numpy, flatten to 1D
+            emb = sample["audio_data"]
+            if encoder is not None:
+                encoder.eval()
+                with torch.no_grad():
+                    device = next(encoder.parameters()).device
+                    emb = encoder(emb.reshape(1, -1).to(device))
+
+            emb = emb.detach().cpu().numpy().squeeze()
+            all_embeds.append(emb)
+            meta.append((
+                dataset_type,
+                sample["obj_id"].item(),
+                sample["tool_id"].item(),
+                sample["beh_id"].item(),
+            ))
+    return np.array(all_embeds), meta
 

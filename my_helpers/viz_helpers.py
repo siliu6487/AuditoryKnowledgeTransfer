@@ -1,23 +1,149 @@
 import copy
 import logging
+import os.path
 
-import numpy as np
 import torch
-from matplotlib import pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from sklearn.linear_model import LogisticRegression
+import matplotlib.pyplot as plt
+import matplotlib as mpl
 from sklearn.manifold import TSNE
+import numpy as np
 
+from my_helpers.epx_specific.torch_pipeline import TransferPipeline
 import configs
 import model
 from my_helpers.data_helpers import get_all_embeddings_or_data, restart_label_index_from_zero, create_tool_idx_list, \
-    filter_keys_by_func
+    filter_keys_by_func, combine_datasets_embeddings, make_dataset_by_context
 
 # manually order objects by similarity
 SIM_OBJECTS_LIST = ['empty', 'water', 'detergent', 'chia-seed', 'cane-sugar', 'salt',
                     'styrofoam-bead', 'split-green-pea', 'wheat', 'chickpea', 'kidney-bean',
                     'wooden-button', 'plastic-bead', 'glass-bead', 'metal-nut-bolt']
 SORTED_DATA_OBJ_LIST = sorted(SIM_OBJECTS_LIST)  # for input data from data files, the labels were created in this order
+
+
+def reduce_dimension(all_embeds):
+    # Reduce to 2D with PCA
+    if all_embeds.shape[1] > 2:
+        print(f"reduce dimension...")
+        tsne = TSNE(n_components=2, random_state=42, init="pca", learning_rate="auto")
+        xy = tsne.fit_transform(all_embeds)  # (N, 2)
+    else:
+        # Already 2D or 1D
+        if all_embeds.shape[1] == 1:
+            xy = np.hstack([all_embeds, np.zeros_like(all_embeds)])
+        else:
+            xy = all_embeds
+    return xy
+
+
+def extract_plot_points(xy, meta, obj2color, full_obj_list):
+    xs, ys, colors, markers, edges, sizes = [], [], [], [], [], []
+    for (dataset_type, obj_id, tool_id, beh_id), (x, y) in zip(meta, xy):
+        # Color = object
+        color = obj2color[full_obj_list[obj_id]]
+
+        # Shape = dataset type
+        if dataset_type == "source_train":
+            marker = "o"  # circle
+            size = 100
+        else:
+            marker = "s"  # square
+            size = 100
+
+        # Edge = test dataset
+        edgecolor = "black" if dataset_type == "target_test" else "none"
+        if dataset_type == "target_test": size = 150
+
+        xs.append(x)
+        ys.append(y)
+        colors.append(color)
+        markers.append(marker)
+        edges.append(edgecolor)
+        sizes.append(size)
+    return xs, ys, colors, markers, edges, sizes
+
+
+def plot_datasets(context_dict, full_obj_list, datasets=None, encoder=None, save_fig_path=None, save_name="figure.jpg"):
+    if datasets is None:
+        source_train_dataset, target_train_dataset, target_test_dataset = make_dataset_by_context(
+            context_dict, full_obj_list)
+        datasets = {
+            "source_train": source_train_dataset,
+            "target_train": target_train_dataset,
+            "target_test": target_test_dataset,
+        }
+    all_embeds, meta = combine_datasets_embeddings(datasets, encoder)
+    xy = reduce_dimension(all_embeds)
+
+    # Setup colormap for objects
+    cmap = plt.get_cmap("tab20", len(full_obj_list))
+    obj2color = {obj: cmap(i) for i, obj in enumerate(full_obj_list)}
+
+    # Extract plotting info
+    xs, ys, colors, markers, edges, sizes = extract_plot_points(
+        xy, meta, obj2color, full_obj_list
+    )
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(10, 8))
+    for x, y, c, m, e, s in zip(xs, ys, colors, markers, edges, sizes):
+        ax.scatter(x, y, c=[c], marker=m, edgecolors=e, s=s, alpha=0.8)
+
+    # Shape legend (source vs target vs test)
+    cross_type = "Tool" if context_dict['source_tool_list'] != context_dict['target_tool_list'] \
+        else "Behavior"
+    shape_handles = [
+        plt.Line2D([0], [0], marker="o", color="w", label=f"Source {cross_type} (All Obj)",
+                   markerfacecolor="gray", markersize=10),
+        plt.Line2D([0], [0], marker="s", color="w", label=f"Target {cross_type} (Shared Obj)",
+                   markerfacecolor="gray", markersize=10),
+        plt.Line2D([0], [0], marker="s", color="w", label=f"Target {cross_type} (Transfer Obj)",
+                   markerfacecolor="gray", markeredgecolor="black", markersize=10),
+    ]
+    if len(datasets['target_train']) == 0:
+        shape_handles = [shape_handles[0]] + [shape_handles[2]]
+
+    ax.legend(handles=shape_handles, fontsize=15)
+
+    # Discrete colormap for objects
+    cmap = plt.get_cmap("tab20", len(full_obj_list))
+    bounds = np.arange(len(full_obj_list) + 1)
+    norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+
+    # Create a ScalarMappable so we can attach a colorbar
+    sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    #
+    # # Add colorbar with object labels
+    cbar = plt.colorbar(sm, ticks=np.arange(len(full_obj_list)) + 0.5, ax=ax)
+    cbar.ax.set_yticklabels(full_obj_list, fontsize=15)  # object names
+    cbar.set_label("Objects", fontsize=15)
+
+    # Black box around plot
+    for spine in ax.spines.values():
+        spine.set_edgecolor("black")
+        spine.set_linewidth(1)
+
+    # Tick marks
+    ax.tick_params(axis="both", which="both", direction="out", length=6, width=1.2, colors="black")
+    # ax.minorticks_on()
+
+    ax.set_title("Dataset Visualization (t-SNE reduced)", fontsize=20)
+    ax.set_xlabel("t-SNE 1", fontsize=15)
+    ax.set_ylabel("t-SNE 2", fontsize=15)
+    ax.grid(False)
+    ax.set_facecolor("white")
+    plt.tight_layout()
+    if save_fig_path is not None:
+        if not os.path.exists(save_fig_path):
+            os.makedirs(save_fig_path)
+        plt.savefig(f"{save_fig_path}/{save_name}", dpi=300, format="jpeg", bbox_inches="tight")
+        print(f"figure saved as: {save_fig_path}/{save_name}")
+
+
+    plt.show()
 
 
 def _map_objects_to_colors(obj_list, labels):

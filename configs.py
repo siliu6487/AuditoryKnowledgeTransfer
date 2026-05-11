@@ -10,20 +10,23 @@ SORTED_OBJ_LIST = sorted(['empty', 'water', 'detergent', 'chia-seed', 'cane-suga
 modality_list = ['audio']
 
 # --------------- transfer context ---------------
-old_object_list = ['chia-seed', 'empty', 'glass-bead', 'plastic-bead', 'wheat',
-                   'salt', 'kidney-bean', 'styrofoam-bead', 'water',  'wooden-button']
-new_object_list = ['metal-nut-bolt', 'cane-sugar', 'chickpea', 'detergent', 'split-green-pea']
+# old_object_list = ['chia-seed', 'empty', 'glass-bead', 'plastic-bead', 'wheat',
+#                    'salt', 'kidney-bean', 'styrofoam-bead', 'water',  'wooden-button']
+# new_object_list = ['metal-nut-bolt', 'cane-sugar', 'chickpea', 'detergent', 'split-green-pea']
 # old_object_list = ['salt', 'chia-seed', 'empty', 'water', 'glass-bead', 'plastic-bead',
 #                    'kidney-bean', 'styrofoam-bead']
 # new_object_list = ['cane-sugar', 'wheat', 'detergent', 'metal-nut-bolt',  'chickpea', 'wooden-button', 'split-green-pea']
+new_object_list = ['cane-sugar', 'chia-seed', 'detergent', 'salt', 'wheat']
+old_object_list = list(set(SORTED_OBJ_LIST) - set(new_object_list))
 
 # source_beh_list = ['2-stirring-slow']
 behavior_list = ['3-stirring-fast']
 source_beh_list = ['3-stirring-fast']
 target_beh_list = ['3-stirring-fast']
+# source_beh_list = ALL_BEH_LIST
+# target_beh_list = ALL_BEH_LIST
 
-source_tool_list = ['plastic-spoon', ]
-                    # 'wooden-fork', 'metal-whisk', "wooden-chopstick", "plastic-knife"]
+source_tool_list = ['plastic-spoon', 'wooden-fork', 'metal-whisk', "wooden-chopstick", "plastic-knife"]
 # source_tool_list = ALL_TOOL_LIST
 target_tool_list = ['metal-scissor']
 
@@ -35,10 +38,11 @@ randomize_trials = True
 
 loss_func = "sincere"  # "TL" for triplet loss or "sincere", or "mulsupcon"
 # data_name = "audio_16kHz_token_down32_stir_20s.bin"
-data_name = "dataset_discretized.bin"
+data_name = "audio_20s_clap_emb_all.npz"
+# data_name = "dataset_discretized.bin"
 # tool_emb_name = "tool_binary_embeddings.bin"
 # tool_emb_name = "tool_click_box_emb.npz"
-tool_emb_name = "tool_beh_mil_emb.npz"
+tool_emb_name = "tool_beh_mil_emb1.npz"
 # data_name = "audio_16kHz_token_down32_beh3.bin"
 
 enc_pt_folder = './saved_model/encoder/'
@@ -76,7 +80,7 @@ viz_l2_norm = False  # viz l2 normed data in 2d space
 
 # --------------- tuned hyper-param ---------------
 cross_validate = True
-lr_encoder = 1e-3  # encoder lr
+lr_encoder = 1e-4  # encoder lr
 TL_margin = 0.5  # TL alpha
 sincere_temp = 0.5  # SINCERE temperature
 mulsupcon_temp = 0.1
@@ -91,6 +95,7 @@ tolerance = 5e-3
 clf_tolerance = 1e-4
 
 # encoder parameters
+encoder_input_dim = 512
 encoder_hidden_dim = 256
 encoder_output_dim = 128  # 128. 2 makes it easy to visualize real decision boundary
 epoch_encoder = 300

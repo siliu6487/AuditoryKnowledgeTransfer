@@ -4,15 +4,17 @@ import time
 
 import configs
 import my_helpers.data_helpers
-from my_helpers.exp_helpers import make_init_result, make_result_dir, load_exp_config_and_update, \
-    set_default_context_hyparams
+from my_helpers.exp_helpers import general_exp_run_setup
 from my_helpers.general_helpers import save_new_json
 from my_helpers.epx_specific.shared_lalent_space import BasicSharedPiplineAudio
+from my_helpers.viz_helpers import plot_datasets
 
 modality = "audio"
 transfer_type = "shared"
-audio_data_name = configs.data_name
-load_arg_config = True  # 👈
+audio_data_name = "audio_20s_clap_emb_all.npz"
+forbidden_test_obj_combo = ("water", "detergent", "empty")  # or None # 👈
+if forbidden_test_obj_combo is not None:
+    transfer_type += "_filter_obj"
 
 test_size = 5
 num_test_fold = 10  # 👈 default 10
@@ -21,36 +23,21 @@ epoch_encoder = 300  # 👈 control running time. default 300
 epoch_classifier = 300  # 👈 control running time. default 300
 one_batch = True  # if true, no minibatch for training, default True
 shuffle = False  # shuffle training data, default false
+encoder_output_dim = 128
 
-# ========= default context and params ========================
-context_dict, hyparams = set_default_context_hyparams(
-    one_batch=one_batch, shuffle=shuffle,
-    epoch_encoder=epoch_encoder, epoch_classifier=epoch_classifier
+setup = general_exp_run_setup(
+    transfer_type=transfer_type, modality=modality, audio_data_name=audio_data_name,
+    one_batch=one_batch, shuffle=shuffle, epoch_encoder=epoch_encoder,
+    epoch_classifier=epoch_classifier, encoder_output_dim=encoder_output_dim,
+    num_test_fold=num_test_fold, test_size=test_size, prev_test_fold=prev_test_fold,
+    forbidden_test_obj_combo=forbidden_test_obj_combo
 )
-
-# ========= update context based on loaded config ========================
-if load_arg_config:
-    exp_config = load_exp_config_and_update(context_dict=context_dict, hyparams=hyparams)
-    audio_data_name = exp_config['data_name']
-
-assert set(context_dict['shared_object_list']).isdisjoint(context_dict['test_object_list'])
-full_obj_list = sorted(context_dict['shared_object_list'] + context_dict['test_object_list'])
-print(f"context_dict: {context_dict}")
-print(f"hyparams: {hyparams}")
-
-# ========= make result saving dir ========================
-result_save_dir = make_result_dir(transfer_type=transfer_type, context_dict=context_dict,
-                                  modality=modality, data_name=audio_data_name)
-
-# ========= init results ========================
-results = make_init_result(
-    transfer_type=transfer_type, audio_data_name=audio_data_name, num_test_fold=num_test_fold,
-    context_dict=context_dict, hyparams=hyparams)
-
-# ========= make test object sets ========================
-test_obj_lists, _ = my_helpers.data_helpers.generate_bibd(
-    all_objs=full_obj_list, k=test_size,
-    n_blocks=num_test_fold, seed=configs.rand_seed + prev_test_fold)
+context_dict = setup['context_dict']
+hyparams = setup['hyparams']
+test_obj_lists = setup['test_obj_lists']
+full_obj_list = setup['full_obj_list']
+results = setup['results']
+result_save_dir = setup['result_save_dir']
 
 # ========= start fold training ========================
 start_time = time.time()
@@ -67,13 +54,13 @@ for i in range(num_test_fold):
     my_helpers.data_helpers.set_torch_seed()
 
     print("train encoder...")
-    enc_result = pipeline.learn_encoder(hyparams=hyparams, one_batch=hyparams['one_batch'])
+    enc_result = pipeline.train_encoder(hyparams=hyparams, one_batch=hyparams['one_batch'], full_obj_list=full_obj_list)
     # plt.plot(enc_result['all_losses'])
     # plt.show()
     # print(f"enc_result: {enc_result}")
 
     print("train classifier...")
-    clf_result = pipeline.learn_classifier(hyparams=hyparams, one_batch=hyparams['one_batch'])
+    clf_result = pipeline.train_classifier(hyparams=hyparams, one_batch=hyparams['one_batch'])
     # plt.plot(clf_result['all_losses'])
     # plt.plot(clf_result['all_accuracies'])
     # plt.show()

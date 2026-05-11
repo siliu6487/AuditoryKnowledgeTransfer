@@ -18,13 +18,13 @@ class BasicSharedPiplineAudio(TransferPipeline):
         self.encoder = None
         self.clf = None
 
-    def learn_encoder(self, hyparams, one_batch) -> dict:
+    def train_encoder(self, hyparams, one_batch, full_obj_list) -> dict:
         # ---------- make data loader ----------------
-        obj_label_map = {o: i for i, o in enumerate(self.full_obj_list)}
+        obj_label_map = {o: i for i, o in enumerate(full_obj_list)}
         source_dataset = self.get_audio_dataset(
             tools=self.context_dict['source_tool_list'],
             behaviors=self.context_dict['source_beh_list'],
-            objects=self.full_obj_list,
+            objects=full_obj_list,
             obj_label_map=obj_label_map
         )
         target_dataset = self.get_audio_dataset(
@@ -78,7 +78,7 @@ class BasicSharedPiplineAudio(TransferPipeline):
             "all_losses": all_losses
         }
 
-    def learn_classifier(self, hyparams, one_batch) -> dict:
+    def train_classifier(self, hyparams, one_batch) -> dict:
         assert self.encoder is not None, "learned encoder not available."
 
         # ---------- make data loader ----------------

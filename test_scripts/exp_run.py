@@ -14,6 +14,15 @@ python test_scripts/exp_run.py --data_name "audio_20s_clap_emb_all.npz" --experi
 python test_scripts/exp_run.py --data_name "audio_20s_clap_emb_all.npz" --experiment_name "cross_behavior" --source_type "rest"
 
 python test_scripts/exp_run.py --data_name "audio_20s_clap_emb_all.npz" --experiment_name "cross_tool" --source_type "single" --limit_beh "3-stirring-fast"
+
+python test_scripts/exp_run.py --data_name "audio_20s_clap_emb_all.npz" --experiment_name "cross_behavior" --source_type "single" --test_script "test_run_sincere_audio.py" --limit_tool "metal-scissor"
+
+python test_scripts/exp_run.py --data_name "audio_20s_clap_emb_all.npz" --experiment_name "cross_tool" --source_type "single" --test_script "test_run_baseline2.py" --limit_beh "2-stirring-slow"
+python test_scripts/exp_run.py --data_name "audio_20s_clap_emb_all.npz" --experiment_name "cross_behavior" --source_type "single" --test_script "test_run_baseline2.py" --limit_tool "metal-whisk"
+
+python test_scripts/exp_run.py --data_name "audio_20s_clap_emb_all.npz" --experiment_name "cross_tool" --source_type "single" --test_script "test_run_clap_novelObj.py" --limit_beh "2-stirring-slow"
+python test_scripts/exp_run.py --data_name "audio_20s_clap_emb_all.npz" --experiment_name "cross_behavior" --source_type "single" --test_script "test_run_clap_novelObj.py" --limit_tool "metal-whisk"
+
 """
 import argparse
 import os
